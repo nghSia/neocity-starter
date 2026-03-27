@@ -7,6 +7,8 @@ export default function BillboardMatrix() {
   const [powerOutage, setPowerOutage] = useState(null);
   const [riotIndex, setRiotIndex] = useState(0);
   const [glitchPulse, setGlitchPulse] = useState(false);
+  const [crowdPanic, setCrowdPanic] = useState(null);
+  const [radioBroadcast, setRadioBroadcast] = useState(null);
 
   const defaultPanels = [
     { text: "PIXEL COLA - TASTE THE FUTURE", color: "#940c16" },
@@ -35,8 +37,23 @@ export default function BillboardMatrix() {
     if (hackerCommand === "love") {
       return "LOVE IS THE ANSWER";
     }
+    if (hackerCommand === "blackout") {
+      return "BLACKOUT RIGHT NOW - STAY AT HOME";
+    }
+    if (hackerCommand === "drones") {
+      return "DRONE SWARM DETECTED - STAY INDOORS";
+    }
+    if (crowdPanic?.level > 20 && crowdPanic.level <= 50) {
+      return `CROWD PANIC - ${crowdPanic.trending}`;
+    }
+    if (crowdPanic?.level > 50) {
+      return `CROWD PANIC - ${crowdPanic.trending}`;
+    }
+    if (radioBroadcast?.isEmergency) {
+      return `EMERGENCY BROADCAST - ${radioBroadcast.message}`;
+    }
     return null;
-  }, [hackerCommand, powerOutage, riotIndex, riotMessages]);
+  }, [hackerCommand, powerOutage, riotIndex, riotMessages, crowdPanic, radioBroadcast]);
 
   const currentColor = useMemo(() => {
     if (hackerCommand === "storm") {
@@ -51,8 +68,23 @@ export default function BillboardMatrix() {
     if (powerOutage) {
       return "#ff1f3d";
     }
+    if (hackerCommand === "blackout") {
+      return "#ff1f3d";
+    }
+    if (hackerCommand === "drones") {
+      return "#00ff88";
+    }
+    if (crowdPanic?.level > 50) {
+      return "#ff5500";
+    }
+    if (crowdPanic?.level > 20) {
+      return "#ff9900";
+    }
+    if (radioBroadcast?.isEmergency) {
+      return "#ff0033";
+    }
     return null;
-  }, [hackerCommand, powerOutage]);
+  }, [hackerCommand, powerOutage, crowdPanic, radioBroadcast]);
 
   useEffect(() => {
     if (!eventBus?.on) {
@@ -64,6 +96,8 @@ export default function BillboardMatrix() {
         setHackerCommand(null);
         setPowerOutage(null);
         setGlitchPulse(true);
+        setRadioBroadcast(null);
+        setCrowdPanic(null);
         return;
       }
       setHackerCommand(command);
@@ -73,12 +107,24 @@ export default function BillboardMatrix() {
       setPowerOutage(severity);
     };
 
+    const handleCrowdPanic = ({ level, trending }) => {
+      setCrowdPanic({ level, trending });
+    };
+
+    const handleRadioBroadcast = ({ message, isEmergency }) => {
+      setRadioBroadcast({ message, isEmergency });
+    };
+
     const unsubHacker = eventBus.on("hacker:command", handleHackerCommand);
     const unsubPower = eventBus.on("power:outage", handlePowerOutage);
+    const unsubCrowd = eventBus.on("crowd:panic", handleCrowdPanic);
+    const unsubRadio = eventBus.on("radio:broadcast", handleRadioBroadcast);
 
     return () => {
       unsubHacker?.();
       unsubPower?.();
+      unsubCrowd?.();
+      unsubRadio?.();
     };
   }, []);
 
@@ -107,16 +153,16 @@ export default function BillboardMatrix() {
     }
     eventBus.emit("billboard:message", {
       text: currentMessage,
-      glitch: Boolean(hackerCommand || powerOutage || glitchPulse),
+      glitch: Boolean(hackerCommand || powerOutage || glitchPulse || radioBroadcast?.isEmergency),
       color: currentColor || "#ff0033",
     });
-  }, [currentMessage, currentColor, hackerCommand, powerOutage, glitchPulse]);
+  }, [currentMessage, currentColor, hackerCommand, powerOutage, glitchPulse, radioBroadcast]);
 
   const getRandomItem = (items) =>
     items[Math.floor(Math.random() * items.length)];
 
   const getRandomHackerCommand = () =>
-    getRandomItem(["storm", "riot", "love", "reset"]);
+    getRandomItem(["storm", "riot", "love", "reset", "blackout", "drones"]);
 
   const getRandomPowerOutage = () => getRandomItem(["partial", "total"]);
 
@@ -125,6 +171,8 @@ export default function BillboardMatrix() {
       if (current !== null) {
         setPowerOutage(null);
         setGlitchPulse(true);
+        setRadioBroadcast(null);
+        setCrowdPanic(null);
         return null;
       }
       return getRandomHackerCommand();
@@ -140,6 +188,24 @@ export default function BillboardMatrix() {
     });
   };
 
+  const simulateRandomCrowdPanic = () => {
+    setCrowdPanic((current) => {
+      if (current !== null) {
+        return null;
+      }
+      return { level: Math.floor(Math.random() * 100), trending: "up" };
+    });
+  };
+
+  const simulateRandomRadioBroadcast = () => {
+    setRadioBroadcast((current) => {
+      if (current !== null) {
+        return null;
+      }
+      return { message: "EMERGENCY BROADCAST", isEmergency: true };
+    });
+  };
+
   return (
     <div className="billboard-matrix">
       <div className="billboard-header">
@@ -147,14 +213,18 @@ export default function BillboardMatrix() {
         <span
           className={
             "glitch-badge" +
-            (hackerCommand || powerOutage || glitchPulse ? " active" : "")
+            (hackerCommand || powerOutage || glitchPulse || radioBroadcast?.isEmergency ? " active" : "")
           }
         >
           {hackerCommand !== null
             ? "HACKING"
             : powerOutage !== null
               ? "POWER OUTAGE"
-              : "BROADCAST"}
+              : radioBroadcast?.isEmergency
+                ? "EMERGENCY BROADCAST"
+                : crowdPanic?.level > 20
+                  ? "CROWD PANIC"
+                  : "BROADCAST"}
         </span>
       </div>
 
@@ -164,6 +234,12 @@ export default function BillboardMatrix() {
         </button>
         <button className="simulate-btn" onClick={simulateRandomPowerOutage}>
           SIMULATE POWER OUTAGE
+        </button>
+        <button className="simulate-btn" onClick={simulateRandomCrowdPanic}>
+          SIMULATE PANIC
+        </button>
+        <button className="simulate-btn" onClick={simulateRandomRadioBroadcast}>
+          SIMULATE BROADCAST
         </button>
       </div>
 
@@ -177,6 +253,8 @@ export default function BillboardMatrix() {
             hackerCommand={hackerCommand}
             powerOutage={powerOutage}
             glitchPulse={glitchPulse}
+            crowdPanic={crowdPanic}
+            radioBroadcast={radioBroadcast}
             color={panel.color}
             crisisColor={currentColor}
           />
@@ -193,20 +271,22 @@ const Panel = ({
   hackerCommand,
   powerOutage,
   glitchPulse,
+  crowdPanic,
+  radioBroadcast,
   color,
   crisisColor,
 }) => {
-  const isCrisis = Boolean(hackerCommand || powerOutage);
+  const isCrisis = Boolean(hackerCommand || powerOutage || crowdPanic || radioBroadcast?.isEmergency);
   const isPartialOutage = powerOutage === "partial";
   const isTotalOutage = powerOutage === "total";
   const message = isCrisis && crisisText ? crisisText : text;
   const backgroundStyle = isCrisis
     ? {
-        background:
-          hackerCommand === "love"
-            ? "linear-gradient(120deg, #ff76b8, #ff9a6b)"
-            : crisisColor,
-      }
+      background:
+        hackerCommand === "love"
+          ? "linear-gradient(120deg, #ff76b8, #ff9a6b)"
+          : crisisColor,
+    }
     : { background: color };
 
   return (
